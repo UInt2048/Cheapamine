@@ -452,9 +452,31 @@ extern char **environ;
     [self spawnJbctlAsRootWithArgs:@[@"respring"]];
 }
 
-- (void)rebootUserspace
+- (void)semiReboot
 {
-    [self spawnJbctlAsRootWithArgs:@[@"reboot_userspace"]];
+    [self runAsRoot:^{
+        __block int pid = 0;
+        __block int r = 0;
+        [self runUnsandboxed:^{
+            r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "backboardd", NULL);
+            if (r == 0) kill(pid, SIGCONT);
+
+            r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "mediaserverd", NULL);
+            if (r == 0) kill(pid, SIGCONT);
+
+            r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "installd", NULL);
+            if (r == 0) kill(pid, SIGCONT);
+
+            r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "userd", NULL);
+            if (r == 0) kill(pid, SIGCONT);
+
+            r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "networkd", NULL);
+            if (r == 0) kill(pid, SIGCONT);
+        }];
+        if (r == 0) {
+            cmd_wait_for_exit(pid);
+        }
+    }];
 }
 
 - (void)rebuildIconCache
@@ -511,7 +533,7 @@ extern char **environ;
     NSString *newBasebinTarPath = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"basebin.tar"];
     int result = jbclient_platform_stage_jailbreak_update(newBasebinTarPath.fileSystemRepresentation);
     if (result == 0) {
-        [self rebootUserspace];
+        [self semiReboot];
         return nil;
     }
     return [NSError errorWithDomain:@"Dopamine" code:result userInfo:nil];
